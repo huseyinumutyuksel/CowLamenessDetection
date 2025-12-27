@@ -76,21 +76,48 @@ add_code("""
 print("✅ Core dependencies installed")
 """)
 
-add_markdown("### Step 1.2: Install DeepLabCut")
+add_markdown("### Step 1.2: Install DeepLabCut (Advanced)")
 add_code("""
-# DeepLabCut - use specific stable version
-!pip install -q deeplabcut==2.3.10
+# Strategy: Install TensorFlow first, then DeepLabCut without extras
+print("Installing TensorFlow...")
+!pip install -q tensorflow==2.13.0
+
+print("Installing DeepLabCut...")
+# Try without [tf] extras to avoid build conflicts
+!pip install -q deeplabcut --no-deps
+!pip install -q ruamel.yaml imgaug scikit-image scikit-learn matplotlib pandas tables
 
 # Verify installation
+import sys
 try:
     import deeplabcut
-    print(f"✅ DeepLabCut {deeplabcut.__version__} installed")
+    print(f"✅ DeepLabCut {deeplabcut.__version__} installed successfully!")
 except ImportError as e:
-    print(f"⚠️ DeepLabCut import issue: {e}")
-    print("Attempting alternative install...")
-    !pip install -q deeplabcut-live
-    import deeplabcut
-    print("✅ DeepLabCut-live installed successfully")
+    print(f"⚠️ DeepLabCut installation failed: {e}")
+    print("")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("🔄 WORKAROUND AVAILABLE")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("If you have ALREADY run DLC analysis and have CSV files")
+    print("in your Drive, you can SKIP this error.")
+    print("")
+    print("The notebook will use your cached DLC results from:")
+    print("  MyDrive/.../cow_single_videos/Saglikli/*.csv")
+    print("  MyDrive/.../cow_single_videos/Topal/*.csv")
+    print("")
+    print("To proceed: Comment out '# RUN BATCH ANALYSIS' section")
+    print("in the DLC cell and run the rest of the notebook.")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    
+    # Try one more alternative
+    print("\nAttempting final fallback...")
+    !pip install -q git+https://github.com/DeepLabCut/DeepLabCut.git@main
+    try:
+        import deeplabcut
+        print("✅ DeepLabCut installed from GitHub!")
+    except:
+        print("❌ All installation methods failed.")
+        print("Please use cached DLC results or run DLC offline.")
 """)
 
 add_markdown("### Step 1.3: Mount Drive & Setup Paths")
