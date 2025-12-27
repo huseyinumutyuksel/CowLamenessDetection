@@ -171,7 +171,7 @@ If you use this code in your research, please cite:
   author={Your Name},
   year={2025},
   version={v16},
-  url={https://github.com/yourusername/cow-lameness-detection}
+  url={https://github.com/huseyinumutyuksel/cow-lameness-detection}
 }
 ```
 
@@ -355,7 +355,7 @@ Bu kodu araştırmanızda kullanırsanız, lütfen alıntı yapın:
   author={İsminiz},
   year={2025},
   version={v16},
-  url={https://github.com/kullaniciadi/cow-lameness-detection}
+  url={https://github.com/huseyinumutyuksel/cow-lameness-detection}
 }
 ```
 
