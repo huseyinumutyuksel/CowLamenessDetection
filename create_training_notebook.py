@@ -66,11 +66,35 @@ This notebook implements a state-of-the-art **Tri-Modal Gait Analysis** system t
 """)
 
 add_markdown("## 1. Setup & Configuration")
+add_markdown("### Step 1.1: Install Core Dependencies")
 add_code("""
-!pip install -q ultralytics timm einops transformers
-!pip install -q "deeplabcut[tf]"
-!pip install -q moviepy supervision scikit-learn scipy seaborn matplotlib
+# Install in stages to avoid dependency conflicts
+!pip install -q ultralytics supervision
+!pip install -q timm einops transformers
+!pip install -q moviepy scikit-learn scipy seaborn matplotlib
+!pip install -q psutil gputil
+print("✅ Core dependencies installed")
+""")
 
+add_markdown("### Step 1.2: Install DeepLabCut")
+add_code("""
+# DeepLabCut - use specific stable version
+!pip install -q deeplabcut==2.3.10
+
+# Verify installation
+try:
+    import deeplabcut
+    print(f"✅ DeepLabCut {deeplabcut.__version__} installed")
+except ImportError as e:
+    print(f"⚠️ DeepLabCut import issue: {e}")
+    print("Attempting alternative install...")
+    !pip install -q deeplabcut-live
+    import deeplabcut
+    print("✅ DeepLabCut-live installed successfully")
+""")
+
+add_markdown("### Step 1.3: Mount Drive & Setup Paths")
+add_code("""
 import os
 from google.colab import drive
 import torch
