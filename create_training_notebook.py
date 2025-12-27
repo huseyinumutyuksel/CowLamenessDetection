@@ -537,6 +537,7 @@ model_checkpoint = {
 }
 torch.save(model_checkpoint, f"{OUTPUT_DIR}/cow_gait_transformer_v16_final.pth")
 print(f"\n✅ Model Saved with Metadata (pose_dim={sample_pose_dim}, test_acc={test_acc:.4f})")
+""")
 
 add_markdown("## 6.5. Training Curves")
 add_code("""
