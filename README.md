@@ -383,8 +383,8 @@ MIT Lisansı - [LICENSE](LICENSE) dosyasına bakın
 For questions or collaborations:  
 Sorular veya işbirlikleri için:
 
-📧 Email: your.email@example.com  
-🐙 GitHub: [@yourusername](https://github.com/yourusername)
+📧 Email: huseyinumut.yuksel@alanyauniversity.edu.tr  
+🐙 GitHub: [@huseyinumutyuksel](https://github.com/huseyinumutyuksel)
 
 ---
 
