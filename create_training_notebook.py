@@ -76,48 +76,54 @@ add_code("""
 print("✅ Core dependencies installed")
 """)
 
-add_markdown("### Step 1.2: Install DeepLabCut (Advanced)")
+add_markdown("### Step 1.2: DeepLabCut Setup (IMPORTANT)")
+add_markdown("""
+> **⚠️ CRITICAL COMPATIBILITY ISSUE**
+>
+> DeepLabCut requires NumPy <2.0, but Colab now uses NumPy 2.2+.
+> Downgrading NumPy breaks many other Colab packages (opencv, jax, etc.).
+>
+> **RECOMMENDED SOLUTION**: Process DLC offline, upload CSVs to Drive.
+""")
+
 add_code("""
-# Strategy: Install TensorFlow first, then DeepLabCut without extras
-print("Installing TensorFlow...")
-!pip install -q tensorflow==2.13.0
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+print("🔄 DEEPLABCUT WORKAROUND")
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+print("")
+print("Option A: SKIP DLC (Use Pre-Computed Results)")
+print("  1. Run DLC SuperAnimal locally or on dedicated machine")
+print("  2. Upload CSV files to Drive alongside videos")
+print("  3. Notebook will auto-detect and use CSVs")
+print("")
+print("Option B: Try DLC Installation (May Fail)")
+print("  - Uncomment the code below to attempt install")
+print("  - Expect dependency conflicts")
+print("")
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-print("Installing DeepLabCut...")
-# Try without [tf] extras to avoid build conflicts
-!pip install -q deeplabcut --no-deps
-!pip install -q ruamel.yaml imgaug scikit-image scikit-learn matplotlib pandas tables
+# UNCOMMENT BELOW TO ATTEMPT DLC INSTALL (NOT RECOMMENDED)
+# !pip install -q --force-reinstall numpy==1.26.4
+# !pip install -q deeplabcut --no-deps
+# !pip install -q dlclibrary filterpy ruamel.yaml imgaug scikit-image
+# import deeplabcut
+# print(f"✅ DLC {deeplabcut.__version__}")
 
-# Verify installation
-import sys
-try:
-    import deeplabcut
-    print(f"✅ DeepLabCut {deeplabcut.__version__} installed successfully!")
-except ImportError as e:
-    print(f"⚠️ DeepLabCut installation failed: {e}")
-    print("")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("🔄 WORKAROUND AVAILABLE")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("If you have ALREADY run DLC analysis and have CSV files")
-    print("in your Drive, you can SKIP this error.")
-    print("")
-    print("The notebook will use your cached DLC results from:")
-    print("  MyDrive/.../cow_single_videos/Saglikli/*.csv")
-    print("  MyDrive/.../cow_single_videos/Topal/*.csv")
-    print("")
-    print("To proceed: Comment out '# RUN BATCH ANALYSIS' section")
-    print("in the DLC cell and run the rest of the notebook.")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    
-    # Try one more alternative
-    print("\nAttempting final fallback...")
-    !pip install -q git+https://github.com/DeepLabCut/DeepLabCut.git@main
-    try:
-        import deeplabcut
-        print("✅ DeepLabCut installed from GitHub!")
-    except:
-        print("❌ All installation methods failed.")
-        print("Please use cached DLC results or run DLC offline.")
+# RECOMMENDED: Check if CSVs exist
+import os
+import glob
+BASE_DIR_CHECK = "/content/drive/MyDrive/Inek Topallik Tespiti Parcalanmis Inek Videolari/cow_single_videos"
+if os.path.exists(BASE_DIR_CHECK):
+    csv_files = glob.glob(f"{BASE_DIR_CHECK}/**/*.csv", recursive=True)
+    if csv_files:
+        print(f"\\n✅ Found {len(csv_files)} DLC CSV files in Drive!")
+        print("   You can proceed without installing DLC.")
+    else:
+        print(f"\\n⚠️ No CSV files found. You need to:")
+        print("   1. Run DLC SuperAnimal offline")
+        print("   2. Upload '*DLC*.csv' files next to videos")
+else:
+    print("\\n📁 Drive path not yet mounted")
 """)
 
 add_markdown("### Step 1.3: Mount Drive & Setup Paths")
