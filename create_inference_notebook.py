@@ -418,7 +418,9 @@ print(df_report.to_string())
 print(f"\\n✅ Report saved to: clinical_report_v16.csv")
 """)
 
-file_name = "c:/Users/Umut/PycharmProjects/CowLamenessDetection/02_Cow_Lameness_Inference_Multi_v16.ipynb"
+# Save notebook to project directory (same location as this script)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+file_name = os.path.join(script_dir, "02_Cow_Lameness_Inference_Multi_v16.ipynb")
 os.makedirs(os.path.dirname(file_name), exist_ok=True)
 
 print(f"Saving inference notebook to {file_name}...")

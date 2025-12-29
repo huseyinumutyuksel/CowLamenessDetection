@@ -336,14 +336,30 @@ def process_video_fusion(video_path):
         flow_seq.append(f)
         last_crop = crop_rgb
 
-    mae_global = extract_videomae_features(cropped_frames)
-    mae_seq = np.tile(mae_global, (30, 1))
+    # VideoMAE: Segment-based embedding to preserve temporal info
+    # Instead of tiling one global embedding, extract per-segment embeddings
+    mae_seq = []
+    segment_size = 6  # 30 frames / 5 segments = 6 frames per segment
+    for seg_start in range(0, 30, segment_size):
+        segment_frames = cropped_frames[seg_start:seg_start+segment_size]
+        segment_emb = extract_videomae_features(segment_frames)
+        # Repeat segment embedding for each frame in segment
+        for _ in range(len(segment_frames)):
+            mae_seq.append(segment_emb)
+    mae_seq = np.array(mae_seq)
     
     return {'pose': pose_seq, 'mae': mae_seq, 'flow': np.array(flow_seq)}
 
 # Build Final Dataset
 data_records = []
+failed_videos = []  # Track failed videos for logging
 from tqdm import tqdm
+import logging
+import gc
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('CowLameness')
 
 print("\\n🔄 Processing videos and extracting features...")
 for vid in tqdm(all_videos, desc="Feature Extraction"):
@@ -358,16 +374,41 @@ for vid in tqdm(all_videos, desc="Feature Extraction"):
                 'mae': feats['mae'],
                 'flow': feats['flow']
             })
+        else:
+            logger.warning(f"No features extracted: {os.path.basename(vid)}")
+            failed_videos.append((vid, "No DLC CSV found or insufficient frames"))
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {vid}")
+        failed_videos.append((vid, f"FileNotFoundError: {e}"))
+    except pd.errors.ParserError as e:
+        logger.error(f"CSV parsing error: {vid}")
+        failed_videos.append((vid, f"ParserError: {e}"))
+    except cv2.error as e:
+        logger.error(f"OpenCV error: {vid}")
+        failed_videos.append((vid, f"OpenCV: {e}"))
     except Exception as e:
-        print(f"Error {vid}: {e}")
+        logger.error(f"Unexpected error for {vid}: {type(e).__name__}: {e}")
+        failed_videos.append((vid, f"{type(e).__name__}: {e}"))
+
+# Summary logging
+logger.info(f"✅ Processed: {len(data_records)}/{len(all_videos)} videos")
+if failed_videos:
+    logger.warning(f"❌ Failed: {len(failed_videos)} videos")
+    for path, reason in failed_videos[:10]:
+        logger.warning(f"   - {os.path.basename(path)}: {reason}")
 
 print(f"✅ Final Dataset: {len(data_records)} samples")
 
-# Check RAM after feature extraction
+# RAM cleanup with automatic garbage collection
 ram_after = psutil.virtual_memory().percent
 print(f"📊 RAM Usage after features: {ram_after:.1f}%")
 if ram_after > 80:
-    print("⚠️ WARNING: High RAM usage detected. Consider clearing variables if needed.")
+    logger.warning("⚠️ High RAM usage detected. Initiating cleanup...")
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    ram_cleaned = psutil.virtual_memory().percent
+    logger.info(f"✅ RAM after cleanup: {ram_cleaned:.1f}% (freed {ram_after - ram_cleaned:.1f}%)")
 """)
 
 add_markdown("## 5. PHASE 3: Biometric Statistical Analysis")
@@ -375,16 +416,52 @@ add_code("""
 from scipy import stats
 import seaborn as sns
 
-def calculate_angle(a, b, c):
+def calculate_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    \"\"\"Calculate the angle at point B formed by vectors BA and BC.
+    
+    Uses the dot product formula: cos(θ) = (BA · BC) / (|BA| × |BC|)
+    
+    Args:
+        a: First endpoint coordinates [x, y]
+        b: Vertex point coordinates [x, y] (angle is measured here)
+        c: Second endpoint coordinates [x, y]
+    
+    Returns:
+        Angle in degrees (0-180). Returns 180 if vectors are collinear.
+    
+    Example:
+        >>> calculate_angle(np.array([0,0]), np.array([1,0]), np.array([1,1]))
+        90.0
+    \"\"\"    
     ba = a - b
     bc = c - b
     cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-8)
     angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
     return np.degrees(angle)
 
-def get_back_curvature_angle(pose_seq):
+def get_back_curvature_angle(pose_seq: np.ndarray) -> float:
+    \"\"\"Calculate the spinal curvature angle from pose sequence.
+    
+    Measures the angle formed by hip-spine-shoulder keypoints.
+    Lame cows typically show MORE curvature (LOWER angle) due to pain compensation.
+    
+    Args:
+        pose_seq: Pose sequence array of shape (30, num_keypoints*3)
+                  where each keypoint has (x, y, confidence)
+    
+    Returns:
+        Spine angle in degrees. 180 = straight back, <180 = curved.
+        Returns 180 if insufficient keypoints.
+    
+    Note:
+        Uses keypoint indices 5, 10, 15 which correspond to:
+        - kpts[5]: Hip region
+        - kpts[10]: Mid-spine  
+        - kpts[15]: Shoulder region
+    \"\"\"    
     kpts = pose_seq.reshape(30, -1, 3).mean(axis=0)
-    if kpts.shape[0] < 15: return 180
+    if kpts.shape[0] < 15: 
+        return 180  # Insufficient keypoints, assume straight
     return calculate_angle(kpts[5,:2], kpts[10,:2], kpts[15,:2])
 
 healthy_scores = [get_back_curvature_angle(d['pose']) for d in data_records if d['label'] == 0]
@@ -450,7 +527,13 @@ if len(data_records) == 0:
     raise RuntimeError("No data loaded! Check DLC CSVs.")
 
 sample_pose_dim = data_records[0]['pose'].shape[1]
-print(f"Pose Dimension: {sample_pose_dim}")
+
+# Pose dimension validation: ensure consistency across all records
+expected_dim = sample_pose_dim
+for i, rec in enumerate(data_records):
+    if rec['pose'].shape[1] != expected_dim:
+        raise ValueError(f"Pose dimension mismatch at record {i}: expected {expected_dim}, got {rec['pose'].shape[1]}")
+print(f"✅ Pose Dimension Validated: {sample_pose_dim} (consistent across {len(data_records)} records)")
 
 # CRITICAL: Train/Test Split for Unbiased Evaluation
 from sklearn.model_selection import train_test_split
@@ -482,6 +565,10 @@ all_labels = []
 all_probs = []  # For ROC-AUC
 train_losses_per_fold = []
 val_losses_per_fold = []
+
+# Track best model across folds
+best_model_state = None
+best_val_acc = 0.0
 
 for fold, (train_idx, val_idx) in enumerate(skf.split(train_records, train_labels)):
     print(f"\\n{'='*50}")
@@ -552,12 +639,19 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(train_records, train_label
     train_losses_per_fold.append(train_losses)
     val_losses_per_fold.append(val_losses)
     
-    print(f"✅ Fold {fold+1} Accuracy: {acc:.4f}")
+    # Track best model
+    if acc > best_val_acc:
+        best_val_acc = acc
+        best_model_state = model.state_dict().copy()
+        print(f"🏆 New best model! Fold {fold+1} Accuracy: {acc:.4f}")
+    else:
+        print(f"✅ Fold {fold+1} Accuracy: {acc:.4f}")
 
 print(f"\n{'='*50}")
 print(f"5-FOLD CV RESULTS (Training Set Only)")
 print(f"{'='*50}")
 print(f"Mean Accuracy: {np.mean(fold_results):.4f} ± {np.std(fold_results):.4f}")
+print(f"Best Validation Accuracy: {best_val_acc:.4f}")
 
 # Final Test Set Evaluation (UNBIASED)
 print(f"\n{'='*60}")
@@ -566,7 +660,10 @@ print(f"{'='*60}")
 
 test_loader = DataLoader(CowDataset(test_records), batch_size=8, shuffle=False)
 
-# Use best model (last fold for simplicity, ideally use best val accuracy model)
+# Load best model for final evaluation
+model = TriModalAttention(pose_dim=sample_pose_dim).to(device)
+model.load_state_dict(best_model_state)
+print(f"📌 Using best model from CV (val_acc={best_val_acc:.4f})")
 model.eval()
 test_preds, test_trues, test_probs = [], [], []
 with torch.no_grad():
@@ -666,7 +763,9 @@ add_markdown("## 8. Confusion Matrix & Metrics")
 add_code("""
 from sklearn.metrics import classification_report
 
-cm = confusion_matrix(all_labels, [1 if e[1] > e[0] else 0 for e in all_embeddings[:len(all_labels)]])
+# Fix: Use probabilities instead of embeddings for predictions
+predicted_labels = [1 if p > 0.5 else 0 for p in all_probs]
+cm = confusion_matrix(all_labels, predicted_labels)
 
 plt.figure(figsize=(6, 5))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
@@ -679,9 +778,7 @@ plt.savefig(f"{OUTPUT_DIR}/confusion_matrix.png", dpi=150)
 plt.show()
 
 print("\\n📊 Classification Report:")
-print(classification_report([all_labels[i] for i in range(len(preds))], 
-                           preds, 
-                           target_names=['Healthy', 'Lame']))
+print(classification_report(all_labels, predicted_labels, target_names=['Healthy', 'Lame']))
 """)
 
 add_markdown("## 9. Ablation Study")
@@ -772,17 +869,17 @@ def train_ablation_model(model, data_records, model_name):
     print(f"✅ {model_name}: {mean_acc:.4f} ± {std_acc:.4f}")
     return mean_acc, std_acc
 
-# Run Ablation
+# Run Ablation (using only train_records to prevent data leakage)
 ablation_results = {}
 
 model_a = PoseOnlyModel(sample_pose_dim).to(device)
-ablation_results['Pose-Only'] = train_ablation_model(model_a, data_records, "Pose-Only")
+ablation_results['Pose-Only'] = train_ablation_model(model_a, train_records, "Pose-Only")
 
 model_b = VideoMAEOnlyModel().to(device)
-ablation_results['VideoMAE-Only'] = train_ablation_model(model_b, data_records, "VideoMAE-Only")
+ablation_results['VideoMAE-Only'] = train_ablation_model(model_b, train_records, "VideoMAE-Only")
 
 model_c = TriModalAttention(pose_dim=sample_pose_dim).to(device)
-ablation_results['Tri-Modal (Ours)'] = train_ablation_model(model_c, data_records, "Tri-Modal (Ours)")
+ablation_results['Tri-Modal (Ours)'] = train_ablation_model(model_c, train_records, "Tri-Modal (Ours)")
 
 # Plot Results
 models = list(ablation_results.keys())
@@ -813,7 +910,9 @@ print("="*60)
 print("✅ Ablation Study Complete")
 """)
 
-file_name = "c:/Users/Umut/PycharmProjects/CowLamenessDetection/01_Cow_Lameness_Training_v16.ipynb"
+# Save notebook to project directory (same location as this script)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+file_name = os.path.join(script_dir, "01_Cow_Lameness_Training_v16.ipynb")
 directory = os.path.dirname(file_name)
 if not os.path.exists(directory):
     os.makedirs(directory)
